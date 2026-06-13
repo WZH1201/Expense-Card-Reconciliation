@@ -37,6 +37,8 @@ def classify_sheet_data(output_filename):
         ('72010101021404', '其他租赁'): '租赁费',
         ('72010101023909', '租车费'): '租赁费',
         
+        ('72010101019903', '编制外长期聘用人员工资及社保'): '补助劳务费',
+        ('72010101022601', '专家咨询费'): '补助劳务费',
         ('72010101022602', '专家评审费'): '补助劳务费',
         ('72010101022699', '其他劳务'): '补助劳务费',
         ('72010101030806', '学生助学金'): '补助劳务费',
@@ -124,6 +126,8 @@ def add_totals_and_summary(output_filename, prefix, items_sheet_name):
     red_font = Font(color="FF0000")
     center_align = Alignment(horizontal="center", vertical="center")
     
+    ws_source = wb["Sheet1"]
+
     for sheet_name in wb.sheetnames:
         if sheet_name in ["Sheet1", items_sheet_name]:
             continue
@@ -132,6 +136,17 @@ def add_totals_and_summary(output_filename, prefix, items_sheet_name):
         max_r = ws.max_row
         
         if max_r == 1 and ws.cell(row=1, column=1).value is None:
+            for col_idx in range(1, 9):
+                src_header_cell = ws_source.cell(row=3, column=col_idx)
+                tgt_header_cell = ws.cell(row=1, column=col_idx, value=src_header_cell.value)
+                
+                if src_header_cell.has_style:
+                    tgt_header_cell.font = copy(src_header_cell.font)
+                    tgt_header_cell.border = copy(src_header_cell.border)
+                    tgt_header_cell.fill = copy(src_header_cell.fill)
+                    tgt_header_cell.alignment = copy(src_header_cell.alignment)
+                    tgt_header_cell.number_format = src_header_cell.number_format
+            
             sheet_sum_cells[sheet_name] = None
             continue
             
@@ -207,62 +222,69 @@ def process_financial_excel():
         print("未找到可以处理的文件")
         return
     
+    selected_files = []
     if len(files) == 1:
-        selected_file = files[0]
+        selected_files = [files[0]]
     else:
-        print("扫描到以下源文件：")
+        print("扫描到以下源文件：\n")
         for idx, file in enumerate(files, 1):
             print(f"  [{idx}] {file}")
             
         while True:
+            choice = input("\n请输入数字序号选择要处理的文件，多选请用空格隔开，输入 0 处理全部：\n").strip()
+            if not choice:
+                continue
+            
+            if choice == '0':
+                selected_files = files
+                break
+                
             try:
-                choice = input("\n请输入数字序号选择要处理的文件：").strip()
-                if not choice:
-                    continue
-                choice_idx = int(choice) - 1
-                if 0 <= choice_idx < len(files):
-                    selected_file = files[choice_idx]
+                indices = [int(x) - 1 for x in choice.split()]
+                if all(0 <= i < len(files) for i in indices):
+                    selected_files = [files[i] for i in indices]
                     break
                 else:
-                    print(f"请输入 1 到 {len(files)} 之间的数字。")
+                    print(f"输入错误，请确保输入的数字在 1 到 {len(files)} 之间")
             except ValueError:
-                print("请输入正确的数字序号")
+                print("输入错误，请输入正确的数字并用空格隔开")
 
-    base_name = os.path.splitext(selected_file)[0]
-    if base_name.startswith("0000"):
-        prefix = base_name[4:]
-    else:
-        prefix = base_name[:8]
-        
-    items_sheet_name = f"{prefix}各项"
-    output_filename = f"{base_name}_分类汇总.xlsx"
+    for selected_file in selected_files:
+        base_name = os.path.splitext(selected_file)[0]
+        if base_name.startswith("0000"):
+            prefix = base_name[4:]
+        else:
+            prefix = base_name[:8]
+            
+        items_sheet_name = f"{prefix}各项"
+        output_filename = f"{base_name}_分类汇总.xlsx"
 
-    try:
-        shutil.copy(selected_file, output_filename)
-    except Exception as e:
-        return
+        try:
+            shutil.copy(selected_file, output_filename)
+        except Exception as e:
+            continue
 
-    new_sheet_names = [
-        items_sheet_name, "办公费", "印刷费", "邮电费", "国内差旅费",
-        "国际差旅费", "维修维护费", "租赁费", "补助劳务费", "交通费",
-        "其他", "办公设备购置费", "软件网络购置费", "其他资本购置费"
-    ]
+        new_sheet_names = [
+            items_sheet_name, "办公费", "印刷费", "邮电费", "国内差旅费",
+            "国际差旅费", "维修维护费", "租赁费", "补助劳务费", "交通费",
+            "其他", "办公设备购置费", "软件网络购置费", "其他资本购置费"
+        ]
 
-    try:
-        wb = load_workbook(output_filename)
-        for sheet_name in new_sheet_names:
-            wb.create_sheet(title=sheet_name)
-                
-        wb.save(output_filename)
-        
-        classify_sheet_data(output_filename)
+        try:
+            wb = load_workbook(output_filename)
+            for sheet_name in new_sheet_names:
+                wb.create_sheet(title=sheet_name)
+                    
+            wb.save(output_filename)
+            
+            classify_sheet_data(output_filename)
 
-        add_totals_and_summary(output_filename, prefix, items_sheet_name)
+            add_totals_and_summary(output_filename, prefix, items_sheet_name)
 
-        print("处理完成")
-        
-    except Exception as e:
-        print(f"操作失败: {e}")
+            print(f"{selected_file} 处理完成")
+            
+        except Exception as e:
+            print(f"操作失败: {e}")
 
 if __name__ == "__main__":
     process_financial_excel()
